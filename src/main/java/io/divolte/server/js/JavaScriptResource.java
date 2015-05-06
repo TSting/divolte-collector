@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 
 import javax.annotation.ParametersAreNonnullByDefault;
@@ -61,9 +62,12 @@ public class JavaScriptResource {
         this.resourceName = Objects.requireNonNull(resourceName);
         this.scriptConstants = Objects.requireNonNull(scriptConstants);
         logger.debug("Compiling JavaScript resource: {}", resourceName);
+
+        final InputStream externJsIs = getClass().getClassLoader().getResourceAsStream("externs.js");
+
         final Compiler compiler;
         try (final InputStream is = getClass().getClassLoader().getResourceAsStream(resourceName)) {
-            compiler = compile(resourceName, is, scriptConstants, debugMode);
+            compiler = compile(resourceName, is, "externs.js", externJsIs, scriptConstants, debugMode);
         }
         logger.info("Pre-compiled JavaScript source: {}", resourceName);
         final Result result = compiler.getResult();
@@ -88,6 +92,8 @@ public class JavaScriptResource {
 
     private static Compiler compile(final String filename,
                                     final InputStream javascript,
+                                    final String externFileName,
+                                    final InputStream externJavaScript,
                                     final ImmutableMap<String,Object> scriptConstants,
                                     final boolean debugMode) throws IOException {
         final CompilerOptions options = new CompilerOptions();
@@ -107,11 +113,14 @@ public class JavaScriptResource {
         options.setDefineReplacements(scriptConstants);
 
         final SourceFile source = SourceFile.fromInputStream(filename, javascript, StandardCharsets.UTF_8);
+        final SourceFile extern = SourceFile.fromInputStream(externFileName, externJavaScript, StandardCharsets.UTF_8);
         final Compiler compiler = new Compiler();
         final ErrorManager errorManager = new Slf4jErrorManager(compiler);
         compiler.setErrorManager(errorManager);
         // TODO: Use an explicit list of externs instead of the default set, to control compatibility.
-        compiler.compile(CommandLineRunner.getDefaultExterns(),
+        final List<SourceFile> defaultExterns = CommandLineRunner.getDefaultExterns();
+        defaultExterns.add(extern);
+        compiler.compile(defaultExterns,
                          ImmutableList.of(source),
                          options);
         return compiler;

@@ -951,8 +951,12 @@ var SCRIPT_NAME = 'divolte.js';
         }
       })
     } else {
-      // TODO: Possibly defer until the DOM is ready?
-      signal('pageView');
+        if ('undefined' !== typeof divolteCustomPageViewProps) {
+            signal('pageView', divolteCustomPageViewProps);
+        } else {
+            // TODO: Possibly defer until the DOM is ready?
+            signal('pageView');
+        }
     }
   } else {
     warn("Divolte module already initialized; existing module left intact.");
