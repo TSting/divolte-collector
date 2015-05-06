@@ -15,4 +15,4 @@
  */
 
 // If we don't set this here, the name of the directory is used.
-rootProject.name = "divolte-collector"
+rootProject.name = "thesting-divolte-collector"
