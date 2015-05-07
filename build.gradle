@@ -40,6 +40,7 @@ apply plugin: 'application'
 apply plugin: 'groovy'
 apply plugin: 'com.github.ben-manes.versions'
 apply plugin: 'pl.allegro.tech.build.axion-release'
+apply plugin: 'maven-publish'
 
 scmVersion {
     tag {
@@ -49,11 +50,11 @@ scmVersion {
 
 defaultTasks 'clean', 'build'
 
-group   = 'io.divolte'
+group   = 'com.thesting.io.divolte'
 // Order matters: the version has to be after the scmVersion extension has determined the version.
-//project.version = scmVersion.version
+project.version = scmVersion.version
 // Disable version resolution via the plugin; we're reevaluating the release process.
-project.version = '0.3.0-SNAPSHOT'
+//project.version = '0.3.0-SNAPSHOT'
 
 sourceCompatibility = 1.8
 mainClassName = 'io.divolte.server.Server'
@@ -65,6 +66,20 @@ applicationDefaultJvmArgs = [
 
 repositories {
     mavenLocal()
+    maven {
+        url mavenRepoReleasesUrl
+        credentials {
+            username = mavenRepoUser
+            password = mavenRepoPasswd
+        }
+    }
+    maven {
+        url mavenRepoSnapshotsUrl
+        credentials {
+            username = mavenRepoUser
+            password = mavenRepoPasswd
+        }
+    }
     mavenCentral()
     maven {
         url 'https://repository-saucelabs.forge.cloudbees.com/release'
@@ -243,7 +258,34 @@ task tarball(dependsOn: build, type: Tar) {
 task zip(dependsOn: build, type: Zip) {
     configure distributionLayout
 }
+//publishing to maven repo. Only for releases!!
+publishing {
+    publications {
+        distributions(MavenPublication) {
+            from components.java
+            artifact tarball {
+                classifier ""
+                extension "tar.gz"
+            }
+            artifact zip {
+                classifier "dist"
+                extension "zip"
+            }
+        }
+    }
+}
 
+publishing {
+    repositories {
+        maven {
+            url mavenRepoReleasesUrl
+            credentials {
+                username = mavenRepoUser
+                password = mavenRepoPasswd
+            }
+        }
+    }
+}
 
 /*
  * Generate Sphinx documentation
