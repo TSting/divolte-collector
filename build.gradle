@@ -22,11 +22,12 @@ buildscript {
     dependencies {
         classpath group: 'com.github.jengelman.gradle.plugins', name: 'shadow', version: '1.1.2'
         classpath group: 'com.github.ben-manes', name: 'gradle-versions-plugin', version: '0.8'
+        classpath group: 'pl.allegro.tech.build', name: 'axion-release-plugin', version: '1.2.0'
     }
 }
 
 plugins {
-    id 'net.researchgate.release' version '2.0.2'
+    id 'pl.allegro.tech.build.axion-release' version '1.2.0'
 }
 
 apply plugin: 'java'
@@ -38,12 +39,29 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'application'
 apply plugin: 'groovy'
 apply plugin: 'com.github.ben-manes.versions'
+apply plugin: 'pl.allegro.tech.build.axion-release'
 apply plugin: 'maven-publish'
+
+scmVersion {
+    repository {
+        customKey = project.file(scmRepoKeyFile)
+        customKeyPassword = scmRepoPassword
+    }
+    tag {
+        prefix = rootProject.name
+    }
+    checks {
+        uncommittedChanges = false // permanently disable uncommitted changes check, it does not work with SymLinks :(
+    }
+}
 
 defaultTasks 'clean', 'build'
 
-group = 'com.thesting.io.divolte'
-project.version = version
+group   = 'com.thesting.io.divolte'
+// Order matters: the version has to be after the scmVersion extension has determined the version.
+project.version = scmVersion.version
+// Disable version resolution via the plugin; we're reevaluating the release process.
+//project.version = '0.3.0-SNAPSHOT'
 
 sourceCompatibility = 1.8
 mainClassName = 'io.divolte.server.Server'
@@ -247,16 +265,6 @@ task tarball(dependsOn: build, type: Tar) {
 task zip(dependsOn: build, type: Zip) {
     configure distributionLayout
 }
-
-//releasing
-release {
-    includeProjectNameInTag = true
-    requireBranch = 'master'
-}
-
-preTagCommit.enabled = false
-
-
 //publishing to maven repo. Only for releases!!
 publishing {
     publications {
@@ -370,19 +378,19 @@ def buildTime() {
 }
 
 task buildRpm(type:Exec) {
-  dependsOn = [copySourceTar]
+    dependsOn = [copySourceTar]
 
-  workingDir 'rpm'
+    workingDir 'rpm'
 
-  if (version.contains('SNAPSHOT')) {
-      commandLine 'rpmbuild', '-ba',
-            '--target', 'noarch-redhat-linux',
-            '--define', 'snapshotVersion -SNAPSHOT',
-            '--define', 'dist _' + buildTime(),
-            'divolte-collector.spec'
-  } else {
-    commandLine 'rpmbuild', '-ba',
-            '--target', 'noarch-redhat-linux',
-            'divolte-collector.spec'
-  }
+    if (version.contains('SNAPSHOT')) {
+        commandLine 'rpmbuild', '-ba',
+                '--target', 'noarch-redhat-linux',
+                '--define', 'snapshotVersion -SNAPSHOT',
+                '--define', 'dist _' + buildTime(),
+                'divolte-collector.spec'
+    } else {
+        commandLine 'rpmbuild', '-ba',
+                '--target', 'noarch-redhat-linux',
+                'divolte-collector.spec'
+    }
 }
