@@ -22,12 +22,10 @@ buildscript {
     dependencies {
         classpath group: 'com.github.jengelman.gradle.plugins', name: 'shadow', version: '1.1.2'
         classpath group: 'com.github.ben-manes', name: 'gradle-versions-plugin', version: '0.8'
-        //classpath group: 'pl.allegro.tech.build', name: 'axion-release-plugin', version: '1.2.0'
     }
 }
 
 plugins {
-    //id 'pl.allegro.tech.build.axion-release' version '1.2.0'
     id 'net.researchgate.release' version '2.0.2'
 }
 
@@ -40,12 +38,11 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'application'
 apply plugin: 'groovy'
 apply plugin: 'com.github.ben-manes.versions'
-//apply plugin: 'pl.allegro.tech.build.axion-release'
 apply plugin: 'maven-publish'
 
 defaultTasks 'clean', 'build'
 
-group   = 'com.thesting.io.divolte'
+group = 'com.thesting.io.divolte'
 project.version = version
 
 sourceCompatibility = 1.8
@@ -250,6 +247,14 @@ task tarball(dependsOn: build, type: Tar) {
 task zip(dependsOn: build, type: Zip) {
     configure distributionLayout
 }
+
+//releasing
+release {
+    tagTemplate = '$name-$version'
+    requireBranch = 'master'
+}
+
+
 //publishing to maven repo. Only for releases!!
 publishing {
     publications {
