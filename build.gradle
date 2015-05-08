@@ -254,6 +254,8 @@ release {
     requireBranch = 'master'
 }
 
+preTagCommit.enabled = false
+
 
 //publishing to maven repo. Only for releases!!
 publishing {
