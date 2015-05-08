@@ -46,7 +46,7 @@ apply plugin: 'maven-publish'
 defaultTasks 'clean', 'build'
 
 group   = 'com.thesting.io.divolte'
-project.version = "0.1.0-SNAPSHOT"
+project.version = version
 
 sourceCompatibility = 1.8
 mainClassName = 'io.divolte.server.Server'
