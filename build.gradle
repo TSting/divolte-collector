@@ -394,3 +394,5 @@ task buildRpm(type:Exec) {
                 'divolte-collector.spec'
     }
 }
+
+release.mustRunAfter tarball
