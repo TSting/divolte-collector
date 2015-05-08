@@ -52,6 +52,7 @@ scmVersion {
     }
     checks {
         uncommittedChanges = false // permanently disable uncommitted changes check, it does not work with SymLinks :(
+        aheadOfRemote = false
     }
 }
 
