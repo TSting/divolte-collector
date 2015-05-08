@@ -250,7 +250,7 @@ task zip(dependsOn: build, type: Zip) {
 
 //releasing
 release {
-    tagTemplate = '$name-$version'
+    includeProjectNameInTag = true
     requireBranch = 'master'
 }
 
