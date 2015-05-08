@@ -56,6 +56,7 @@ scmVersion {
     }
 }
 
+
 defaultTasks 'clean', 'build'
 
 group   = 'com.thesting.io.divolte'
