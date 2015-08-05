@@ -58,6 +58,9 @@ scmVersion {
             ? versionFromTag
             : Version.valueOf(versionFromTag).incrementMinorVersion()
     }
+    checks {
+        uncommittedChanges = false // permanently disable uncommitted changes check
+    }
 }
 
 defaultTasks 'clean', 'build'
