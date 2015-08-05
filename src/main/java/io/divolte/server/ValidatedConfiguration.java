@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 import javax.annotation.ParametersAreNonnullByDefault;
 import javax.annotation.ParametersAreNullableByDefault;
 
+import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +63,7 @@ public final class ValidatedConfiguration {
      * {@code Config} object is passed through a supplier, instead of directly.
      * The constructor will catch any {@code ConfigException} thrown from the
      * supplier's getter.
-     * 
+     *
      * @param configLoader
      *            Supplier of the underlying {@code Config} instance.
      */
@@ -116,7 +117,8 @@ public final class ValidatedConfiguration {
         final JavascriptConfiguration javascript = new JavascriptConfiguration(
                 getOrAddException(              config::getString,      "divolte.javascript.name",                      exceptions),
                 getOrAddException(              config::getBoolean,     "divolte.javascript.logging",                   exceptions),
-                getOrAddException(              config::getBoolean,     "divolte.javascript.debug",                     exceptions));
+                getOrAddException(              config::getBoolean,     "divolte.javascript.debug",                     exceptions),
+                getOrAddException(              config::getBoolean,     "divolte.javascript.auto_page_view_event",      exceptions));
 
         if (javascript.name != null && !javascript.name.matches("^[A-Za-z0-9_-]+\\.js$")) {
             ConfigException.Generic wrongJsNameException = new ConfigException.Generic(
@@ -245,7 +247,7 @@ public final class ValidatedConfiguration {
      * Returns the validated configuration object tree. This is only returned
      * when no validation errors exist. The method throws
      * {@code IllegalStateException} otherwise.
-     * 
+     *
      * @return The validated configuration.
      * @throws IllegalStateException
      *             When validation errors exist.
@@ -260,7 +262,7 @@ public final class ValidatedConfiguration {
     /**
      * Returns a list of {@code ConfigException} that were thrown during
      * configuration validation.
-     * 
+     *
      * @return A list of {@code ConfigException} that were thrown during
      *         configuration validation.
      */
@@ -270,7 +272,7 @@ public final class ValidatedConfiguration {
 
     /**
      * Returns false if validation errors exist, true otherwise.
-     * 
+     *
      * @return false if validation errors exist, true otherwise.
      */
     public boolean isValid() {
@@ -378,11 +380,13 @@ public final class ValidatedConfiguration {
         public final String name;
         public final Boolean logging;
         public final Boolean debug;
+        public final Boolean autoPageViewEvent;
 
-        private JavascriptConfiguration(final String name, final Boolean logging, final Boolean debug) {
+        private JavascriptConfiguration(final String name, final Boolean logging, final Boolean debug, final Boolean autoPageViewEvent) {
             this.name = name;
             this.logging = logging;
             this.debug = debug;
+            this.autoPageViewEvent = autoPageViewEvent;
         }
     }
 
@@ -498,12 +502,14 @@ public final class ValidatedConfiguration {
         }
 
         public SimpleRollingFileStrategyConfiguration asSimpleRollingFileStrategy() {
-            if (Types.SIMPLE_ROLLING_FILE != type) throw new IllegalStateException("Attempt to cast FileStrategyConfiguration to wrong type.");
+            Preconditions.checkState(Types.SIMPLE_ROLLING_FILE == type,
+                                     "Attempt to cast FileStrategyConfiguration to wrong type.");
             return (SimpleRollingFileStrategyConfiguration) this;
         }
 
         public SessionBinningFileStrategyConfiguration asSessionBinningFileStrategy() {
-            if (Types.SESSION_BINNING != type) throw new IllegalStateException("Attempt to cast FileStrategyConfiguration to wrong type.");
+            Preconditions.checkState(Types.SESSION_BINNING == type,
+                                     "Attempt to cast FileStrategyConfiguration to wrong type.");
             return (SessionBinningFileStrategyConfiguration) this;
         }
     }

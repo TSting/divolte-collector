@@ -16,10 +16,16 @@
 
 package io.divolte.server;
 
-import static io.divolte.server.IncomingRequestProcessor.DIVOLTE_EVENT_KEY;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.*;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.InjectableValues;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.io.Resources;
+import com.maxmind.geoip2.model.CityResponse;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import io.divolte.server.ServerTestUtils.EventPayload;
 import io.divolte.server.ServerTestUtils.TestServer;
 import io.divolte.server.ip2geo.LookupService;
@@ -27,38 +33,32 @@ import io.divolte.server.ip2geo.LookupService.ClosedServiceException;
 import io.divolte.server.recordmapping.DslRecordMapper;
 import io.divolte.server.recordmapping.SchemaMappingException;
 import io.undertow.server.HttpServerExchange;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Stream;
-
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.junit.After;
 import org.junit.Test;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.InjectableValues;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.io.Files;
-import com.google.common.io.Resources;
-import com.maxmind.geoip2.model.CityResponse;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import javax.annotation.ParametersAreNonnullByDefault;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.stream.Stream;
 
+import static io.divolte.server.IncomingRequestProcessor.DIVOLTE_EVENT_KEY;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+
+@ParametersAreNonnullByDefault
 public class DslRecordMapperTest {
     private static final String CLIENT_SIDE_TIME = "i0rjfnxd";
     private static final String DIVOLTE_URL_STRING = "http://localhost:%d/csc-event";
@@ -75,9 +75,15 @@ public class DslRecordMapperTest {
             + "k=2&"
             + "w=sa&"
             + "h=sa&"
-            + "t=pageView&"
-            + "t.foo=string&"
-            + "t.bar=42";
+            + "t=pageView";
+
+    private static final String HOMOGENOUS_EVENT_PARAMS =
+            "u=" + encodeUrl("(sfoo!string!dbar!16!)");
+    private static final String HETEROGENOUS_EVENT_PARAMS =
+            "u=" + encodeUrl("(sfoo!string!dbar!16!aitems!" +
+                    "(sname!apple!dcount!3!jprice!1.23!sextra1!ignored!)" +
+                    "(sname!pear!dcount!1!jprice!0.89!sextra2!ignored!)" +
+                    ".)");
 
     private static final String USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.122 Safari/537.36";
 
@@ -283,9 +289,56 @@ public class DslRecordMapperTest {
     @Test
     public void shouldSetCustomEventParameters() throws IOException, InterruptedException {
         setupServer("event-param-mapping.groovy");
-        EventPayload event = request("http://www.example.com/");
+        EventPayload event = request("http://www.example.com/", Collections.singletonList(HOMOGENOUS_EVENT_PARAMS));
         assertEquals(ImmutableMap.of("foo", "string", "bar", "42"), event.record.get("paramMap"));
         assertEquals("string", event.record.get("paramValue"));
+    }
+
+    @Test
+    public void shouldExtractJsonPathFromCustomEventParameters() throws IOException, InterruptedException {
+        setupServer("event-param-jsonpath-mapping.groovy");
+        final EventPayload event = request("http://www.example.com/", Collections.singletonList(HETEROGENOUS_EVENT_PARAMS));
+        assertEquals("string", event.record.get("paramValue"));
+        assertEquals(42, event.record.get("paramIntValue"));
+        assertEquals(Arrays.asList(1.23, 0.89), event.record.get("itemPrices"));
+        // Doing a proper check would require accessing the schema and building everything by hand.
+        // This is simpler and sufficient for the purposes of testing.
+        assertEquals("[{\"name\": \"apple\", \"count\": 3, \"price\": 1.23}, {\"name\": \"pear\", \"count\": 1, \"price\": 0.89}]",
+                     GenericData.get().toString(event.record.get("items")));
+    }
+
+    @Test
+    public void shouldTreatEmptyJsonPathResultAsNonPresent() throws IOException, InterruptedException {
+        setupServer("event-param-jsonpath-missing.groovy");
+        final EventPayload event = request("http://www.example.com/");
+        assertEquals("value that should not be overwritten",
+                     event.record.get("paramValue"));
+    }
+
+    @Test
+    public void shouldMapAllEventParameters() throws IOException, InterruptedException {
+        setupServer("event-param-all.groovy");
+        final EventPayload event = request("http://www.example.com/", Collections.singletonList(HETEROGENOUS_EVENT_PARAMS));
+        assertEquals("{\"foo\": \"string\", \"bar\": \"42\", \"items\": [{\"count\": 3, \"price\": 1.23}, {\"count\": 1, \"price\": 0.89}]}",
+                GenericData.get().toString(event.record.get("paramRecord")));
+    }
+
+    @Test
+    public void shouldTreatRuntimeEventParameterMappingMismatchAsNonPresent() throws IOException, InterruptedException {
+        setupServer("event-param-jsonpath-mismatch.groovy");
+        final EventPayload event = request("http://example.com/", Collections.singletonList(HETEROGENOUS_EVENT_PARAMS));
+        // Nothing should have been mapped here.
+        assertNull(event.record.get("paramIntValue"));
+        // This is mapped last: it should have completed even though an earlier field mapping failed.
+        assertTrue((Boolean)event.record.get("flag1"));
+    }
+
+    @Test
+    public void shouldSupportPresenceTestingOfJsonPathExpressions() throws IOException, InterruptedException {
+        setupServer("event-param-jsonpath-presence.groovy");
+        final EventPayload event = request("http://www.example.com/", Collections.singletonList(HOMOGENOUS_EVENT_PARAMS));
+        assertTrue((Boolean) event.record.get("flag1"));
+        assertFalse((Boolean) event.record.get("flag2"));
     }
 
     @Test
@@ -301,7 +354,7 @@ public class DslRecordMapperTest {
         EventPayload event = request("http://www.example.com");
 
         final File geoMappingFile = File.createTempFile("geo-mapping", ".groovy");
-        Files.write(Resources.toByteArray(Resources.getResource("geo-mapping.groovy")), geoMappingFile);
+        copyResourceToFile("geo-mapping.groovy", geoMappingFile);
 
         final ImmutableMap<String, Object> mappingConfig = ImmutableMap.of(
                 "divolte.tracking.schema_mapping.mapping_script_file", geoMappingFile.getAbsolutePath(),
@@ -334,7 +387,7 @@ public class DslRecordMapperTest {
             assertEquals("Property " + k + " not mapped correctly.", v, recordValue);
         });
 
-        java.nio.file.Files.delete(geoMappingFile.toPath());
+        Files.delete(geoMappingFile.toPath());
     }
 
     @Test(expected=SchemaMappingException.class)
@@ -412,7 +465,7 @@ public class DslRecordMapperTest {
     }
 
     @Test
-    public void sholdExitFromSectionOnConditionClosureSyntax() throws IOException, InterruptedException {
+    public void shouldExitFromSectionOnConditionClosureSyntax() throws IOException, InterruptedException {
         setupServer("nested-conditional-exit-closure.groovy");
         EventPayload event = request("http://www.example.com");
         assertEquals("happened", event.record.get("client"));
@@ -443,24 +496,22 @@ public class DslRecordMapperTest {
         }
     }
 
-    private EventPayload request(String location) throws IOException, InterruptedException {
-        return request(location, null);
+    private EventPayload request(final String location) throws IOException, InterruptedException {
+        return request(location, Collections.emptyList());
     }
 
-    private EventPayload request(String location, String referer) throws IOException, InterruptedException {
-        final URL url = referer == null ?
-                new URL(
-                        String.format(DIVOLTE_URL_STRING, server.port) +
-                        DIVOLTE_URL_QUERY_STRING +
-                        "&l=" + URLEncoder.encode(location, StandardCharsets.UTF_8.name()))
-                :
-                new URL(
-                        String.format(DIVOLTE_URL_STRING, server.port) +
-                        DIVOLTE_URL_QUERY_STRING +
-                        "&l=" + URLEncoder.encode(location, StandardCharsets.UTF_8.name()) +
-                        "&r=" + URLEncoder.encode(referer, StandardCharsets.UTF_8.name()));
+    private EventPayload request(final String location, final String referer) throws IOException, InterruptedException {
+        return request(location, Collections.singletonList("r=" + encodeUrl(referer)));
+    }
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+    private EventPayload request(final String location,
+                                 final List<String> extraEncodedQueryParameters) throws IOException, InterruptedException {
+        final StringBuilder urlBuilder = new StringBuilder(String.format(DIVOLTE_URL_STRING, server.port));
+        urlBuilder.append(DIVOLTE_URL_QUERY_STRING)
+                  .append("&l=").append(encodeUrl(location));
+        extraEncodedQueryParameters.forEach(s -> urlBuilder.append('&').append(s));
+        final URL url = new URL(urlBuilder.toString());
+        final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.addRequestProperty("User-Agent", USER_AGENT);
         conn.addRequestProperty("Cookie", "custom_cookie=custom_cookie_value;");
         conn.addRequestProperty("X-Divolte-Test", "first");
@@ -473,12 +524,21 @@ public class DslRecordMapperTest {
         return server.waitForEvent();
     }
 
+    private static String encodeUrl(final String s) {
+        try {
+            return URLEncoder.encode(s, StandardCharsets.UTF_8.name());
+        } catch (final UnsupportedEncodingException e) {
+            // This should never happen: all platforms must support UTF-8.
+            throw new RuntimeException(e);
+        }
+    }
+
     private void setupServer(final String mapping) throws IOException {
         mappingFile = File.createTempFile("test-mapping", ".groovy");
-        Files.write(Resources.toByteArray(Resources.getResource(mapping)), mappingFile);
+        copyResourceToFile(mapping, mappingFile);
 
         avroFile = File.createTempFile("TestSchema-", ".avsc");
-        Files.write(Resources.toByteArray(Resources.getResource("TestRecord.avsc")), avroFile);
+        copyResourceToFile("TestRecord.avsc", avroFile);
 
         ImmutableMap<String, Object> mappingConfig = ImmutableMap.of(
                 "divolte.tracking.schema_mapping.mapping_script_file", mappingFile.getAbsolutePath(),
@@ -489,10 +549,20 @@ public class DslRecordMapperTest {
         server.server.run();
     }
 
+    private static void copyResourceToFile(final String resourceName, final File file) throws IOException {
+        com.google.common.io.Files.write(Resources.toByteArray(Resources.getResource(resourceName)), file);
+    }
+
     @After
     public void shutdown() throws IOException {
-        if (server != null) server.server.shutdown();
-        if (mappingFile != null) java.nio.file.Files.delete(mappingFile.toPath());
-        if (avroFile != null) java.nio.file.Files.delete(avroFile.toPath());
+        if (server != null) {
+            server.server.shutdown();
+        }
+        if (mappingFile != null) {
+            Files.delete(mappingFile.toPath());
+        }
+        if (avroFile != null) {
+            Files.delete(avroFile.toPath());
+        }
     }
 }

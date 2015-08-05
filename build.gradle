@@ -21,49 +21,45 @@ buildscript {
     }
     dependencies {
         classpath group: 'com.github.jengelman.gradle.plugins', name: 'shadow', version: '1.1.2'
-        classpath group: 'com.github.ben-manes', name: 'gradle-versions-plugin', version: '0.8'
-        classpath group: 'pl.allegro.tech.build', name: 'axion-release-plugin', version: '1.2.0'
+        classpath group: 'com.github.ben-manes', name: 'gradle-versions-plugin', version: '0.9'
+        classpath group: 'pl.allegro.tech.build', name: 'axion-release-plugin', version: '1.2.4'
     }
 }
 
 plugins {
-    id 'pl.allegro.tech.build.axion-release' version '1.2.0'
+    id 'pl.allegro.tech.build.axion-release' version '1.2.4'
 }
 
 apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'findbugs'
 apply plugin: 'pmd'
+apply plugin: 'checkstyle'
 apply plugin: 'jacoco'
 apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'application'
 apply plugin: 'groovy'
 apply plugin: 'com.github.ben-manes.versions'
 apply plugin: 'pl.allegro.tech.build.axion-release'
-apply plugin: 'maven-publish'
+
+import com.github.zafarkhaja.semver.Version
 
 scmVersion {
-    repository {
-        customKey = project.file(scmRepoKeyFile)
-        customKeyPassword = scmRepoPassword
-    }
     tag {
         prefix = rootProject.name
     }
-    checks {
-        uncommittedChanges = false // permanently disable uncommitted changes check, it does not work with SymLinks :(
-        aheadOfRemote = false
+    versionCreator { versionFromTag, scmPosition ->
+        scmPosition.onTag || scmPosition.branch.startsWith('support/')
+            ? versionFromTag
+            : Version.valueOf(versionFromTag).incrementMinorVersion()
     }
 }
 
-
 defaultTasks 'clean', 'build'
 
-group   = 'com.thesting.io.divolte'
+group   = 'io.divolte'
 // Order matters: the version has to be after the scmVersion extension has determined the version.
 project.version = scmVersion.version
-// Disable version resolution via the plugin; we're reevaluating the release process.
-//project.version = '0.3.0-SNAPSHOT'
 
 sourceCompatibility = 1.8
 mainClassName = 'io.divolte.server.Server'
@@ -75,20 +71,6 @@ applicationDefaultJvmArgs = [
 
 repositories {
     mavenLocal()
-    maven {
-        url mavenRepoReleasesUrl
-        credentials {
-            username = mavenRepoUser
-            password = mavenRepoPasswd
-        }
-    }
-    maven {
-        url mavenRepoSnapshotsUrl
-        credentials {
-            username = mavenRepoUser
-            password = mavenRepoPasswd
-        }
-    }
     mavenCentral()
     maven {
         url 'https://repository-saucelabs.forge.cloudbees.com/release'
@@ -99,9 +81,9 @@ repositories {
 }
 
 dependencies {
-    compile group: 'io.divolte', name: 'divolte-schema', version: "0.2.2"
+    compile group: 'io.divolte', name: 'divolte-schema', version: version
     compile group: 'io.undertow', name: 'undertow-core', version: '1.0.16.Final'
-    compile group: 'com.typesafe', name: 'config', version: '1.2.1'
+    compile group: 'com.typesafe', name: 'config', version: '1.3.0'
     compile group: 'com.google.guava', name: 'guava', version: '18.0'
     compile group: 'org.apache.avro', name: 'avro', version: '1.7.7'
 
@@ -132,10 +114,11 @@ dependencies {
         exclude group: 'com.google.http-client', module: 'google-http-client'
     }
     compile group: 'org.apache.kafka', name:'kafka_2.10', version:'0.8.2.0'
-    compile group: 'com.google.javascript', name:'closure-compiler', version:'v20150315'
+    compile group: 'com.google.javascript', name:'closure-compiler', version:'v20150505'
     compile group: 'org.codehaus.groovy', name:'groovy', version: '2.4.3', classifier: 'indy'
     compile group: 'net.sf.jopt-simple', name:'jopt-simple', version: '4.8'
-    compile group: 'com.fasterxml.jackson.jr', name: 'jackson-jr-objects', version: '2.5.2'
+    compile group: 'com.jayway.jsonpath', name: 'json-path', version: '2.0.0'
+    compile group: 'com.fasterxml.jackson.core', name:'jackson-databind', version: '2.5.3'
 
     // We use the SLF4J API. At runtime, this is LogBack.
     // (We also force any dependencies that use Log4J to go via SLF4J.)
@@ -147,8 +130,10 @@ dependencies {
     testCompile group: 'org.hamcrest', name: 'hamcrest-all', version: '1.3'
     testCompile group: 'org.mockito', name: 'mockito-all', version: '1.10.19'
     testCompile group: 'com.mashape.unirest', name: 'unirest-java', version: '1.4.5'
-    testCompile group: 'com.fasterxml.jackson.core', name:'jackson-databind', version: '2.5.2'
-    testCompile group: 'com.saucelabs', name:'sauce_junit', version: '2.1.13'
+    testCompile group: 'com.fasterxml.jackson.core', name:'jackson-databind', version: '2.5.3'
+    testCompile group: 'com.fasterxml.jackson.module', name:'jackson-module-parameter-names', version: '2.5.3'
+    testCompile group: 'com.fasterxml.jackson.datatype', name:'jackson-datatype-jdk8', version: '2.5.3'
+    testCompile group: 'com.saucelabs', name:'sauce_junit', version: '2.1.19'
     // Warning: SauceLabs doesn't work properly with Selenium 2.44.
     testCompile group: 'org.seleniumhq.selenium', name:'selenium-java', version: '2.43.1'
     // Warning: PhantomJSDriver 1.2.0 doesn't work properly with Selenium 2.44.
@@ -174,6 +159,10 @@ tasks.withType(JavaCompile) {
 
     // Log details about usage of deprecated symbols.
     options.deprecation = true
+
+    // Java 8 feature: parameter names via reflection, which makes
+    // stuff like Jackson mapping easier.
+    options.compilerArgs = ["-parameters"]
 }
 
 tasks.withType(FindBugs) {
@@ -185,15 +174,29 @@ tasks.withType(FindBugs) {
 
 findbugs() {
     toolVersion = "3.0.1"
+    excludeFilter = file("config/findbugs/findbugs-excludes.xml")
 }
 
 pmd {
-    // Gradle 2.3 isn't compatible with PMD 5.2+
-    toolVersion = "5.1.3"
+    toolVersion = "5.3.1"
+    ruleSets = [
+            "java-basic",
+            "java-braces",
+            "java-clone",
+            "java-empty",
+            "java-finalizers",
+            'java-sunsecure',
+            "java-imports",
+            "java-unnecessary"
+    ]
+}
+
+checkstyle {
+    toolVersion = "6.6"
 }
 
 jacoco {
-    toolVersion = "0.7.1.201405082137"
+    toolVersion = "0.7.4.201502262128"
 }
 
 findbugsMain.reports {
@@ -206,7 +209,7 @@ findbugsTest.reports {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.3'
+    gradleVersion = '2.4'
 }
 
 /*
@@ -267,34 +270,7 @@ task tarball(dependsOn: build, type: Tar) {
 task zip(dependsOn: build, type: Zip) {
     configure distributionLayout
 }
-//publishing to maven repo. Only for releases!!
-publishing {
-    publications {
-        distributions(MavenPublication) {
-            from components.java
-            artifact tarball {
-                classifier ""
-                extension "tar.gz"
-            }
-            artifact zip {
-                classifier "dist"
-                extension "zip"
-            }
-        }
-    }
-}
 
-publishing {
-    repositories {
-        maven {
-            url mavenRepoReleasesUrl
-            credentials {
-                username = mavenRepoUser
-                password = mavenRepoPasswd
-            }
-        }
-    }
-}
 
 /*
  * Generate Sphinx documentation
@@ -386,17 +362,13 @@ task buildRpm(type:Exec) {
 
     if (version.contains('SNAPSHOT')) {
         commandLine 'rpmbuild', '-ba',
-                '--target', 'noarch-redhat-linux',
-                '--define', 'snapshotVersion -SNAPSHOT',
-                '--define', 'dist _' + buildTime(),
-                'divolte-collector.spec'
+            '--target', 'noarch-redhat-linux',
+            '--define', 'snapshotVersion -SNAPSHOT',
+            '--define', 'dist _' + buildTime(),
+            'divolte-collector.spec'
     } else {
         commandLine 'rpmbuild', '-ba',
-                '--target', 'noarch-redhat-linux',
-                'divolte-collector.spec'
+            '--target', 'noarch-redhat-linux',
+            'divolte-collector.spec'
     }
 }
-
-
-
-
