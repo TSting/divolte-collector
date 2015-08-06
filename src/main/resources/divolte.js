@@ -1201,7 +1201,11 @@ var AUTO_PAGE_VIEW_EVENT = true;
     }
 
     var signalPageView = AUTO_PAGE_VIEW_EVENT ? function() {
-      signal('pageView');
+        if ('undefined' !== typeof divolteCustomPageViewProps) {
+            signal('pageView', divolteCustomPageViewProps);
+        } else {
+            signal('pageView');
+        }
     } : function() {};
 
     if (typeof hiddenProperty !== 'undefined' && document[hiddenProperty]) {
@@ -1215,12 +1219,8 @@ var AUTO_PAGE_VIEW_EVENT = true;
         }
       })
     } else {
-        if ('undefined' !== typeof divolteCustomPageViewProps) {
-            signal('pageView', divolteCustomPageViewProps);
-        } else {
-            // TODO: Possibly defer until the DOM is ready?
-            signalPageView();
-        }
+      // TODO: Possibly defer until the DOM is ready?
+      signalPageView();
     }
   } else {
     warn("Divolte module already initialized; existing module left intact.");
